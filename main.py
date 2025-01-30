@@ -19,12 +19,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_units(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    if context.args and context.args[0].lower() in ['c', 'f']:
-        USER_PREFERENCES[user_id] = context.args[0].lower()
-        unit_text = 'Цельсия' if context.args[0].lower() == 'c' else 'Фаренгейта'
-        await update.message.reply_text(f'Единицы измерения установлены: {unit_text}')
-    else:
-        await update.message.reply_text('Используйте /units c или /units f для выбора единиц измерения.')
+    USER_PREFERENCES[user_id] = 'c'  # По умолчанию Цельсий
+    keyboard = [[
+        InlineKeyboardButton('°C (Цельсий)', callback_data='unit_c'),
+        InlineKeyboardButton('°F (Фаренгейт)', callback_data='unit_f')
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Выберите единицы измерения:', reply_markup=reply_markup)
 
 async def get_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
     city = update.message.text
@@ -66,11 +67,11 @@ async def get_forecast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if isinstance(update, Update) and update.message:
         city = ' '.join(context.args) if context.args else None
-    elif update.callback_query:
+    elif isinstance(update, Update) and update.callback_query:
         city = update.callback_query.data.split('_')[1]
     
     if not city:
-        await update.callback_query.message.reply_text("Используйте /forecast <город>")
+        await update.effective_message.reply_text("Используйте /forecast <город>")
         return
     
     user_id = update.effective_user.id
@@ -92,15 +93,15 @@ async def get_forecast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 date = day_data['dt_txt'].split(' ')[0]
                 temp = int(day_data['main']['temp'])
                 desc = day_data['weather'][0]['description'].capitalize()
-                forecast_text += f'📅 {date}: {temp}{temp_symbol}, {desc}\n'
+                forecast_text += f'📆 {date}: 🌡 {temp}{temp_symbol}, ☁ {desc}\n'
             
-            await update.callback_query.message.reply_text(forecast_text)
+            await update.effective_message.reply_text(forecast_text)
         else:
-            await update.callback_query.message.reply_text("Город не найден. Попробуйте еще раз.")
+            await update.effective_message.reply_text("Город не найден. Попробуйте еще раз.")
             
     except Exception as e:
         logging.error(f"Ошибка: {e}")
-        await update.callback_query.message.reply_text("Произошла ошибка. Попробуйте позже.")
+        await update.effective_message.reply_text("Произошла ошибка. Попробуйте позже.")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -108,9 +109,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data.startswith('forecast_'):
         city = query.data.split('_')[1]
-        await get_forecast(query, context)
+        await get_forecast(update, context)
     elif query.data == 'change_units':
-        await query.message.reply_text("Используйте /units c или /units f для выбора единиц измерения.")
+        await set_units(update, context)
+    elif query.data == 'unit_c':
+        USER_PREFERENCES[query.from_user.id] = 'c'
+        await query.message.reply_text("Вы выбрали градусы Цельсия (°C).")
+    elif query.data == 'unit_f':
+        USER_PREFERENCES[query.from_user.id] = 'f'
+        await query.message.reply_text("Вы выбрали градусы Фаренгейта (°F).")
 
 def main():
     app = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
